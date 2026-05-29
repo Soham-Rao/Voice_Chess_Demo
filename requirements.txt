@@ -1,0 +1,21 @@
+python-chess
+Pillow
+customtkinter
+SpeechRecognition
+openai
+openai-whisper
+torch
+
+# if u wanna autoinstall torch for cuda, run this code in a python file
+# import shutil, subprocess, sys
+
+# def has_nvidia_smi():
+#     return shutil.which("nvidia-smi") is not None
+
+# if has_nvidia_smi():
+#     print("NVIDIA GPU detected — installing CUDA-enabled PyTorch (11.8)...")
+#     cmd = ["conda", "install", "-y", "pytorch", "torchvision", "torchaudio", "pytorch-cuda=11.8", "-c", "pytorch", "-c", "nvidia"]
+# else:
+#     print("No NVIDIA driver found — installing CPU-only PyTorch...")
+#     cmd = ["conda", "install", "-y", "pytorch", "torchvision", "torchaudio", "cpuonly", "-c", "pytorch"]
+# subprocess.check_call(cmd)
