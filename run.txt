@@ -1,0 +1,1 @@
+$env:LOCAL_WHISPER_MODEL='medium.en';$env:TCL_LIBRARY='C:\Users\soham\.conda\envs\techit\Library\lib\tcl8.6'; $env:TK_LIBRARY='C:\Users\soham\.conda\envs\techit\Library\lib\tk8.6'; conda run -n techit python app.py
