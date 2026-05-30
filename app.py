@@ -7,13 +7,14 @@ import sys
 import threading
 import tempfile
 import time
+import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 from difflib import get_close_matches
 
 import chess
-from PIL import Image, ImageTk
+from PIL import Image, ImageOps, ImageTk
 
 
 def ensure_tcl_tk_paths() -> bool:
@@ -62,6 +63,11 @@ except ImportError:
 BASE_DIR = Path(__file__).resolve().parent
 PIECE_DIR = BASE_DIR / "pieces-basic-png"
 WAND_FILE = BASE_DIR / "wand.png"
+BACKGROUND_FILE = BASE_DIR / "background.png"
+OPENING_LABEL = "No spells whisper here,\nQuiet minds trace measured paths,\nLogic moves alone."
+OPENING_REJECT_MESSAGE = "that not be the vocable you seek"
+CHALLENGE_WIN_MESSAGE = "Congratulations Wizard! Watts Over Wands! ⚡"
+CHALLENGE_LOSE_MESSAGE = "Try again young apprentice"
 TRANSCRIBE_MODEL = os.environ.get("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
 LOCAL_WHISPER_MODEL = os.environ.get("LOCAL_WHISPER_MODEL", "tiny.en")
 LOCAL_WHISPER_DEVICE = os.environ.get("LOCAL_WHISPER_DEVICE", "auto")
@@ -856,12 +862,14 @@ class WizardChessApp(ctk.CTk):
         self.closing = False
         self.challenge_started = False
         self.wand_image = self.load_wand_image()
+        self.main_ui_built = False
+        self.opening_bg_original: Optional[Image.Image] = None
+        self.opening_bg_photo: Optional[ImageTk.PhotoImage] = None
+        self.opening_message: Optional[ctk.CTkLabel] = None
+        self.opening_entry: Optional[ctk.CTkEntry] = None
 
-        self._build_ui()
-        self.bind("<F11>", lambda _event: self.toggle_fullscreen())
-        self.bind("<Escape>", lambda _event: self.set_fullscreen(False))
+        self._build_opening_page()
         self.protocol("WM_DELETE_WINDOW", self.close_app)
-        self.refresh_all("Welcome to the enchanted board. Speak or type a move to begin.")
 
     def load_wand_image(self) -> Optional[ctk.CTkImage]:
         if not WAND_FILE.exists():
@@ -869,6 +877,67 @@ class WizardChessApp(ctk.CTk):
         image = Image.open(WAND_FILE).convert("RGBA")
         image.thumbnail((84, 84), Image.Resampling.LANCZOS)
         return ctk.CTkImage(light_image=image, dark_image=image, size=image.size)
+
+    def _build_opening_page(self) -> None:
+        self.configure(fg_color="#120b08")
+        self.opening_canvas = tk.Canvas(self, highlightthickness=0, bg="#120b08")
+        self.opening_canvas.pack(fill="both", expand=True)
+        if BACKGROUND_FILE.exists():
+            self.opening_bg_original = Image.open(BACKGROUND_FILE).convert("RGB")
+        self.opening_canvas.bind("<Configure>", self._resize_opening_background)
+
+        self.opening_panel = ctk.CTkFrame(self.opening_canvas, fg_color="transparent", corner_radius=0)
+        self.opening_window = self.opening_canvas.create_window(0, 0, window=self.opening_panel, anchor="center")
+        self.opening_label = ctk.CTkLabel(
+            self.opening_panel,
+            text=OPENING_LABEL,
+            font=("Georgia", 34, "bold"),
+            text_color=GOLD,
+        )
+        self.opening_label.pack(padx=34, pady=(28, 12))
+        self.opening_entry = ctk.CTkEntry(self.opening_panel, width=260, justify="center", font=("Segoe UI", 18))
+        self.opening_entry.pack(padx=34, pady=(0, 12))
+        self.opening_entry.bind("<Return>", lambda _event: self._submit_opening_word())
+        self.bind("<Return>", lambda _event: self._submit_opening_word())
+        self.opening_message = ctk.CTkLabel(self.opening_panel, text="", text_color=BAD, font=("Segoe UI", 15))
+        self.opening_message.pack(padx=34, pady=(0, 26))
+        self.after(100, self.opening_entry.focus_set)
+
+    def _resize_opening_background(self, event) -> None:
+        width = max(event.width, 1)
+        height = max(event.height, 1)
+        if self.opening_bg_original:
+            resized = ImageOps.fit(self.opening_bg_original, (width, height), method=Image.Resampling.LANCZOS)
+            self.opening_bg_photo = ImageTk.PhotoImage(resized)
+            self.opening_canvas.delete("background")
+            self.opening_canvas.create_image(0, 0, image=self.opening_bg_photo, anchor="nw", tags="background")
+            self.opening_canvas.tag_lower("background")
+        if hasattr(self, "opening_window"):
+            self.opening_canvas.coords(self.opening_window, width // 2, height // 2)
+
+    def _submit_opening_word(self) -> None:
+        if self.main_ui_built or not self.opening_entry:
+            return
+        word = self.opening_entry.get().strip()
+        if word != "chess":
+            if self.opening_message:
+                self.opening_message.configure(text=OPENING_REJECT_MESSAGE)
+            self.opening_entry.delete(0, "end")
+            return
+        self._launch_challenge_app()
+
+    def _launch_challenge_app(self) -> None:
+        self.unbind("<Return>")
+        self.opening_canvas.destroy()
+        self._build_ui()
+        self.main_ui_built = True
+        self.bind("<F11>", lambda _event: self.toggle_fullscreen())
+        self.bind("<Escape>", lambda _event: self.set_fullscreen(False))
+        self.change_mode("Challenge")
+        self.sample_challenge()
+        self.start_challenge()
+        self.set_fullscreen(True)
+        self.command_entry.focus_set()
 
     def _build_ui(self) -> None:
         self.configure(fg_color="#120b08")
@@ -1540,7 +1609,9 @@ class WizardChessApp(ctk.CTk):
         modal.configure(fg_color="#160f0b")
         title = "Mischief Managed" if victory else "The Duel Is Lost"
         body = message
-        if victory and "checkmate" not in message.lower():
+        if self.active_mode == "challenge":
+            body = CHALLENGE_WIN_MESSAGE if victory else CHALLENGE_LOSE_MESSAGE
+        elif victory and "checkmate" not in message.lower():
             body = f"{message}\n\nThe Great Hall erupts. Your spellwork wins the board."
         elif not victory and "checkmate" not in message.lower():
             body = f"{message}\n\nThe board resets, and the portraits are already whispering about a rematch."
